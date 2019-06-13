@@ -83,12 +83,12 @@ class QTSms
                         'scene' => $params['scene'],
                         'ip' => $_SERVER["REMOTE_ADDR"]
                     ]);
-                    if($res !== false){
+                    if ($res !== false) {
                         return [
                             'code' => 1,
                             'message' => '发送成功',
                         ];
-                    }else{
+                    } else {
                         return [
                             'code' => 0,
                             'message' => '验证码异常',
@@ -140,40 +140,38 @@ class QTSms
      * @throws \think\exception\DbException
      * @throws \think\exception\PDOException
      */
-    public function check($phone,$code,$scene)
+    public function check($phone, $code, $scene)
     {
         $sms_status = Db::table('qtsms')->where([
             'phone' => $phone,
             'scene' => $scene,
             'status' => 1
         ])->find();
-        if($sms_status){//验证成功
-            if($sms_status['end_time'] < date('Y-m-d H:i:s',time())){
+        if ($sms_status) {//验证成功
+            if ($sms_status['end_time'] < date('Y-m-d H:i:s', time())) {
                 return [
                     'code' => 0,
                     'message' => '验证码已失效',
                 ];
-            }else{
-                $res = Db::table('qtsms')->where('id',$sms_status['id'])->update(['status' => 2]);
-                if($res){
+            } else {
+                $res = Db::table('qtsms')->where('id', $sms_status['id'])->update(['status' => 2]);
+                if ($res) {
                     return [
                         'code' => 1,
                         'message' => '验证成功',
                     ];
-                }else{
+                } else {
                     return [
                         'code' => 0,
                         'message' => '验证异常',
                     ];
                 }
-
             }
-        }else{
+        } else {
             return [
                 'code' => 0,
                 'message' => '您输入的验证码有误',
             ];
         }
-        return $sms_status;
     }
 }
