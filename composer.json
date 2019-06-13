@@ -1,0 +1,16 @@
+{
+    "name": "hxc/qt-sms",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "韩韩韩",
+            "email": "3365997294@qq.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "autoload":{
+        "psr-4":{
+            "QTSms\\":"src/"
+        }
+    }
+}
