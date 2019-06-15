@@ -151,6 +151,7 @@ class QTSms
         $sms_status = Db::table('qtsms')->where([
             'phone' => $phone,
             'scene' => $scene,
+            'code'  => $code,
             'status' => 1
         ])->order('id desc')->find();
         if($sms_status){//验证成功
