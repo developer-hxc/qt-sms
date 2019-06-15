@@ -11,11 +11,12 @@ use think\Db;
 class QTSms
 {
 //        使用方法
+//        $sms_config = Config::get('sms');
 //        $config = [
-//            'sms_username' => Config::get('sms_username'),
-//            'sms_password' => Config::get('sms_password'),
-//            'sms_code_failure_time' => Config::get('sms_code_failure_time'),
-//            'sms_resend' => Config::get('sms_resend'),
+//            'username' => $sms_config['username'],
+//            'password' => $sms_config['password'],
+//            'code_failure_time' => $sms_config['code_failure_time'],
+//            'resend' => $sms_config['resend'],
 //        ];
 //        $qt_sms = new QTSms($config);
 
@@ -32,7 +33,7 @@ class QTSms
 
     /**
      * 配置
-     * $config = ['sms_username' => '用户名','sms_password' => '密码','sms_code_failure_time' => '失效时间，单位：分钟','sms_resend' => '重新发送时间，单位：秒']
+     * $config = ['username' => '用户名','password' => '密码','code_failure_time' => '失效时间，单位：分钟','resend' => '重新发送时间，单位：秒']
      */
     protected $config;
 
@@ -58,28 +59,33 @@ class QTSms
                 'phone' => $phone,
                 'scene' => $params['scene'],
                 'status' => 1
-            ])->whereTime('create_time', '>', date('Y-m-d H:i:s', (time() - $this->config['sms_resend'])))->find();
+            ])->whereTime('create_time', '>', date('Y-m-d H:i:s', (time() - $this->config['resend'])))->find();
             if ($sms_status) {
-                $time = (($this->config['sms_resend']) - (strtotime(date('Y-m-d H:i:s', time())) - strtotime($sms_status['create_time'])));
+                $time = (($this->config['resend']) - (strtotime(date('Y-m-d H:i:s', time())) - strtotime($sms_status['create_time'])));
                 return [
                     'code' => 0,
                     'message' => "{$time}秒后重新发送",
                 ];
             }
             try {
-                $username = $this->config['sms_username']; //用户名
-                $password = $this->config['sms_password']; //密码
+                $username = $this->config['username']; //用户名
+                $password = $this->config['password']; //密码
                 $template = str_replace('{$code}', $params['code'], $params['template']);//内容
                 $ContentS = rawurlencode(mb_convert_encoding($template, "gb2312", "utf-8"));//短信内容做GB2312转码处理
                 $url = "https://sdk2.028lk.com/sdk2/LinkWS.asmx/BatchSend2?CorpID=" . $username . "&Pwd=" . $password . "&Mobile=" . $phone . "&Content=" . $ContentS . "&Cell=&SendTime=";
                 $result = file_get_contents($url);
                 $re = simplexml_load_string($result);
                 if ($re[0] > 0) {
+                    Db::table('qtsms')->where([
+                        'phone' => $phone,
+                        'scene' => $params['scene'],
+                        'status' => 1
+                    ])->update(['status' => 3]);
                     $res = Db::table('qtsms')->insert([
                         'phone' => $phone,
                         'code' => $params['code'],
                         'create_time' => date('Y-m-d H:i:s', time()),
-                        'end_time' => date('Y-m-d H:i:s', strtotime("+{$this->config['sms_code_failure_time']}minute")),
+                        'end_time' => date('Y-m-d H:i:s', strtotime("+{$this->config['code_failure_time']}minute")),
                         'scene' => $params['scene'],
                         'ip' => $_SERVER["REMOTE_ADDR"]
                     ]);
@@ -146,7 +152,7 @@ class QTSms
             'phone' => $phone,
             'scene' => $scene,
             'status' => 1
-        ])->find();
+        ])->order('id desc')->find();
         if($sms_status){//验证成功
             if($sms_status['end_time'] < date('Y-m-d H:i:s',time())){
                 return [
