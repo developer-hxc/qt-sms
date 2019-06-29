@@ -5,12 +5,23 @@
         {
             "name": "韩韩韩",
             "email": "3365997294@qq.com"
+        },
+        {
+            "name": "lvzhao1995",
+            "email": "abc-1.2@qq.com"
         }
     ],
-    "minimum-stability": "dev",
     "autoload":{
         "psr-4":{
             "QTSms\\":"src/"
         }
+    },
+    "require": {
+        "php": ">=5.6.0",
+        "ext-mbstring": "*",
+        "ext-simplexml": "*",
+        "ext-pdo": "*",
+        "topthink/framework": "5.0.*",
+        "overtrue/easy-sms": "^1.1"
     }
 }
