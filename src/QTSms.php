@@ -2,7 +2,18 @@
 
 namespace QTSms;
 
+use Overtrue\EasySms\EasySms;
+use Overtrue\EasySms\Exceptions\InvalidArgumentException;
+use Overtrue\EasySms\Exceptions\NoGatewayAvailableException;
+use PDOStatement;
+use QTSms\Gateways\LingkaiGateways;
 use think\Db;
+use think\db\exception\DataNotFoundException;
+use think\db\exception\ModelNotFoundException;
+use think\Exception;
+use think\exception\DbException;
+use think\exception\PDOException;
+use think\Model;
 
 /**
  * Class QTSms
@@ -36,6 +47,7 @@ class QTSms
      * $config = ['username' => '用户名','password' => '密码','code_failure_time' => '失效时间，单位：分钟','resend' => '重新发送时间，单位：秒']
      */
     protected $config;
+    protected $easySms;
 
     /**
      * QTSms constructor.
@@ -44,93 +56,98 @@ class QTSms
     public function __construct($config)
     {
         $this->config = $config;
+        $this->easySms = new EasySms($this->config);
+
+        // 注册
+        $this->easySms->extend('lingkai', function ($gatewayConfig) {
+            // $gatewayConfig 来自配置文件里的 `gateways.mygateway`
+            return new LingkaiGateways($gatewayConfig);
+        });
     }
 
     /**
-     * @param $phone [手机号]
-     * @param $params ['code' => '验证码','template' => '模板内容','scene' => '场景:login,']
-     * @return array [code,0：失败，1：成功]
+     * 发送短信
+     * @param $to
+     * @param $message
+     * @param array $gateways
+     * @return array
+     * @throws NoGatewayAvailableException
+     * @throws InvalidArgumentException
      */
-    public function send($phone, $params)
+    public function send($to, $message, array $gateways = [])
+    {
+        return $this->easySms->send($to, $message, $gateways);
+    }
+
+    /**
+     * @param string $phone [手机号]
+     * @param array $params ['code' => '验证码','template' => '模板内容','scene' => '场景:login,']
+     * @return array [code,0：失败，1：成功]
+     * @throws DataNotFoundException
+     * @throws ModelNotFoundException
+     * @throws DbException
+     */
+    public function sendCode($phone, $params)
     {
         $patt = '/^1[3456789][0-9]{9}$/';
-        if (preg_match($patt, $phone)) {
-            $sms_status = Db::table('qtsms')->where([
-                'phone' => $phone,
-                'scene' => $params['scene'],
-                'status' => 1
-            ])->whereTime('create_time', '>', date('Y-m-d H:i:s', (time() - $this->config['resend'])))->find();
-            if ($sms_status) {
-                $time = (($this->config['resend']) - (strtotime(date('Y-m-d H:i:s', time())) - strtotime($sms_status['create_time'])));
-                return [
-                    'code' => 0,
-                    'message' => "{$time}秒后重新发送",
-                ];
-            }
-            try {
-                $username = $this->config['username']; //用户名
-                $password = $this->config['password']; //密码
-                $template = str_replace('{$code}', $params['code'], $params['template']);//内容
-                $ContentS = rawurlencode(mb_convert_encoding($template, "gb2312", "utf-8"));//短信内容做GB2312转码处理
-                $url = "https://sdk2.028lk.com/sdk2/LinkWS.asmx/BatchSend2?CorpID=" . $username . "&Pwd=" . $password . "&Mobile=" . $phone . "&Content=" . $ContentS . "&Cell=&SendTime=";
-                $result = file_get_contents($url);
-                $re = simplexml_load_string($result);
-                if ($re[0] > 0) {
-                    Db::table('qtsms')->where([
-                        'phone' => $phone,
-                        'scene' => $params['scene'],
-                        'status' => 1
-                    ])->update(['status' => 3]);
-                    $res = Db::table('qtsms')->insert([
-                        'phone' => $phone,
-                        'code' => $params['code'],
-                        'create_time' => date('Y-m-d H:i:s', time()),
-                        'end_time' => date('Y-m-d H:i:s', strtotime("+{$this->config['code_failure_time']}minute")),
-                        'scene' => $params['scene'],
-                        'ip' => $_SERVER["REMOTE_ADDR"]
-                    ]);
-                    if($res !== false){
-                        return [
-                            'code' => 1,
-                            'message' => '发送成功',
-                        ];
-                    }else{
-                        return [
-                            'code' => 0,
-                            'message' => '验证码异常',
-                        ];
-                    }
-                } elseif ($re == 0) {
-                    return [
-                        'code' => 0,
-                        'message' => '网络访问超时，请稍后再试！',
-                    ];
-                } elseif ($re == -9) {
-                    return [
-                        'code' => 0,
-                        'message' => '发送号码为空',
-                    ];
-                } elseif ($re == -101) {
-                    return [
-                        'code' => 0,
-                        'message' => '调用接口速度太快',
-                    ];
-                } else {
-                    return [
-                        'code' => 0,
-                        'message' => '发送失败',
-                    ];
-                }
-            } catch (Exception $exception) {
-                return [
-                    'code' => 0,
-                    'message' => '网络错误,无法连接服务器',
-                ];
-            }
-        } else {
+        if (!preg_match($patt, $phone)) {
             return [
                 'code' => 0,
                 'message' => '手机号码格式不正确',
+            ];
+        }
+        $sms_status = Db::name('qtsms')->where('phone', $phone)
+            ->where('scene', $params['scene'])
+            ->where('status', 1)
+            ->whereTime('create_time', '>', time() - $this->config['resend'])
+            ->find();
+        if ($sms_status) {
+            $time = (($this->config['resend']) - (time() - strtotime($sms_status['create_time'])));
+            return [
+                'code' => 0,
+                'message' => "{$time}秒后重新发送",
+            ];
+        }
+
+        try {
+            $this->easySms->send($phone, [
+                'content' => isset($params['content']) ? $params['content'] : '',
+                'template' => isset($params['template']) ? $params['template'] : '',
+                'data' => isset($params['data']) ? $params['data'] : []
+            ]);
+            Db::name('qtsms')->where([
+                'phone' => $phone,
+                'scene' => $params['scene'],
+                'status' => 1
+            ])->update(['status' => 3]);
+            $res = Db::name('qtsms')->insert([
+                'phone' => $phone,
+                'code' => $params['code'],
+                'create_time' => date('Y-m-d H:i:s'),
+                'end_time' => date('Y-m-d H:i:s', strtotime("+{$this->config['code_failure_time']}minute")),
+                'scene' => $params['scene'],
+                'ip' => $_SERVER["REMOTE_ADDR"]
+            ]);
+            if ($res !== false) {
+                return [
+                    'code' => 1,
+                    'message' => '发送成功',
+                ];
+            } else {
+                return [
+                    'code' => 0,
+                    'message' => '验证码异常',
+                ];
+            }
+        } catch (NoGatewayAvailableException $e) {
+            return [
+                'code' => 0,
+                'message' => $e->getLastException()->getMesssage()
+            ];
+        } catch (\Exception $exception) {
+            return [
+                'code' => 0,
+                'message' => '网络错误,无法连接服务器',
             ];
         }
     }
@@ -139,35 +156,35 @@ class QTSms
      * @param $phone
      * @param $code
      * @param $scene
-     * @return array|false|\PDOStatement|string|\think\Model  [code,0：失败，1：成功]
-     * @throws \think\Exception
-     * @throws \think\db\exception\DataNotFoundException
-     * @throws \think\db\exception\ModelNotFoundException
-     * @throws \think\exception\DbException
-     * @throws \think\exception\PDOException
+     * @return array|false|PDOStatement|string|Model  [code,0：失败，1：成功]
+     * @throws Exception
+     * @throws DataNotFoundException
+     * @throws ModelNotFoundException
+     * @throws DbException
+     * @throws PDOException
      */
-    public function check($phone,$code,$scene)
+    public function check($phone, $code, $scene)
     {
-        $sms_status = Db::table('qtsms')->where([
+        $sms_status = Db::name('qtsms')->where([
             'phone' => $phone,
             'scene' => $scene,
-            'code'  => $code,
+            'code' => $code,
             'status' => 1
         ])->order('id desc')->find();
-        if($sms_status){//验证成功
-            if($sms_status['end_time'] < date('Y-m-d H:i:s',time())){
+        if ($sms_status) {//验证成功
+            if ($sms_status['end_time'] < date('Y-m-d H:i:s', time())) {
                 return [
                     'code' => 0,
                     'message' => '验证码已失效',
                 ];
-            }else{
-                $res = Db::table('qtsms')->where('id',$sms_status['id'])->update(['status' => 2]);
-                if($res){
+            } else {
+                $res = Db::name('qtsms')->where('id', $sms_status['id'])->update(['status' => 2]);
+                if ($res) {
                     return [
                         'code' => 1,
                         'message' => '验证成功',
                     ];
-                }else{
+                } else {
                     return [
                         'code' => 0,
                         'message' => '验证异常',
@@ -175,12 +192,11 @@ class QTSms
                 }
 
             }
-        }else{
+        } else {
             return [
                 'code' => 0,
                 'message' => '您输入的验证码有误',
             ];
         }
-        return $sms_status;
     }
 }
