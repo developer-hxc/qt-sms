@@ -1,6 +1,7 @@
 {
     "name": "hxc/qt-sms",
     "license": "MIT",
+    "type": "qt-extend",
     "authors": [
         {
             "name": "韩韩韩",
