@@ -142,7 +142,7 @@ class QTSms
         } catch (NoGatewayAvailableException $e) {
             return [
                 'code' => 0,
-                'message' => $e->getLastException()->getMesssage()
+                'message' => $e->getLastException()->getMessage()
             ];
         } catch (\Exception $exception) {
             return [
