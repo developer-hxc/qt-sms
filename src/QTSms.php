@@ -87,7 +87,7 @@ class QTSms
                         'create_time' => date('Y-m-d H:i:s', time()),
                         'end_time' => date('Y-m-d H:i:s', strtotime("+{$this->config['code_failure_time']}minute")),
                         'scene' => $params['scene'],
-                        'ip' => $_SERVER["REMOTE_ADDR"]
+                        'ip' => isset($_SERVER["REMOTE_ADDR"])?$_SERVER["REMOTE_ADDR"]:''
                     ]);
                     if($res !== false){
                         return [
